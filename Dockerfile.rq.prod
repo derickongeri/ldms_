@@ -1,0 +1,38 @@
+FROM python:3.7
+
+# We want proper container logging
+ENV PYTHONUNBUFFERED 1
+
+# Set workdri
+ENV WORK_DIR=/django_rq
+ENV COMPOSE_DIR=${WORK_DIR}/compose
+#ENV COMPOSE_DIR=${WORK_DIR}
+
+# create compose directory
+RUN mkdir -p $WORK_DIR/compose
+
+# Move requirements file into container
+ADD requirements.rq.txt ${WORK_DIR}/requirements.txt
+ADD compose/run_rq.sh $COMPOSE_DIR/run_rq.sh
+ADD compose/run_rqscheduler.sh $COMPOSE_DIR/run_rqscheduler.sh
+
+# make executable
+RUN chmod +x $COMPOSE_DIR/run_rq.sh
+RUN chmod +x $COMPOSE_DIR/run_rqscheduler.sh
+
+# Set working directory to project
+WORKDIR $WORK_DIR
+
+# Upgrade pip
+RUN pip install --upgrade pip
+
+# Install requirements
+RUN pip install -r requirements.txt
+
+# copy project
+COPY . $WORK_DIR
+
+# RUN ls -lt $WORK_DIR
+RUN ls -ld $PWD/*
+#RUN ls $COMPOSE_DIR
+#RUN pwd

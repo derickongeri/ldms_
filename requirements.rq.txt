@@ -1,0 +1,2 @@
+django-rq==2.4.0
+rq-scheduler==0.10.0

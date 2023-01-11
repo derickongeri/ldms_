@@ -1,0 +1,156 @@
+# use multi-build to reduce the overall size
+#########
+# BUILDER #
+#########
+
+# # pull official base image
+# FROM python:3.8.3-alpine AS builder
+
+# # set work directory
+# WORKDIR /usr/src/app
+
+# # set environment variables 
+# ENV PYTHONDONTWRITEBYTECODE 1 # Prevents Python from writing pyc files to disc. (equivalent to python -B option)
+# ENV PYTHONUNBUFFERED 1 # Prevents Python from buffering stdout and stderr. (equivalent to python -u option)
+
+# # install psycopg2 dependencies
+# RUN apk update \
+#     && apk add postgresql-dev gcc python3-dev musl-dev \
+#     && apk add make automake gcc g++ \
+#     && apk add --no-cache  \
+#      --repository http://dl-cdn.alpinelinux.org/alpine/edge/testing \
+#      --repository http://dl-cdn.alpinelinux.org/alpine/edge/main \
+#      gdal \
+#      gdal-dev \
+#      geos \
+#      geos-dev \
+#      py-virtualenv \
+#      libffi-dev \
+#      proj proj-dev proj-util \
+#      gfortran openblas-dev cython
+
+# RUN pip install scikit-learn==0.23.2
+# RUN pip install Fiona
+# RUN pip install pyproj==2.6.1.post1
+# # lint
+# # RUN pip install --upgrade pip
+# # RUN pip install flake8
+# # COPY . .
+# # RUN flake8 --ignore=E501,F401 .    
+
+# # install dependencies
+# COPY ./requirements.txt .
+# RUN pip wheel --no-cache-dir --no-deps --wheel-dir /usr/src/app/wheels -r requirements.txt
+
+#########
+# FINAL #
+#########
+
+FROM python:3.7
+
+# set environment variables
+# set user
+ENV APP_USER=app  
+ENV PROJ_DIR=/usr
+ 
+ENV PYTHONDONTWRITEBYTECODE 1 # Prevents Python from writing pyc files to disc. (equivalent to python -B option)
+ENV PYTHONUNBUFFERED 1 # Prevents Python from buffering stdout and stderr. (equivalent to python -u option)
+
+# create directory for the ldms user
+RUN mkdir -p /home/$APP_USER
+
+# create the ldms user
+RUN groupadd $APP_USER && useradd $APP_USER -g $APP_USER
+
+# create the appropriate env variables
+ENV HOME=/home/$APP_USER
+ENV APP_HOME=/home/$APP_USER/web
+
+# install dependencies
+RUN apt-get update && \
+    apt-get install -y gcc python3-dev musl-dev \
+    gdal-bin \
+    libgeos-dev \
+    libffi-dev \
+    proj-bin \
+    libopenblas-dev \ 
+    python3-scipy python3-numpy python3-pandas \
+    netcat \
+    nano
+
+RUN apt-get update && apt-get install -y gdal-bin \
+     apt-utils libgdal-dev 
+
+# RUN apt-get -y install redis-server
+
+# Add the line below to ensure git clone always runs and not use cache value
+# ADD "https://www.random.org/cgi-bin/randbyte?nbytes=10&format=h" skipcache
+
+# pull source code while setting the values of {GITLAB_USERNAME} and {GITLAB_PASSWORD}
+# RUN git clone --single-branch --branch develop https://{GITLAB_USERNAME}:{GITLAB_PASSWORD}@gitlab.com/locateit/oss-land-degradation-monitoring-service/oss-ldms.git src
+
+# RUN cat src/backend/oss_ldms/settings.py
+
+# copy the cloned files
+# RUN cp -R src/backend/ $APP_HOME
+
+# Install setuptools==58.0.0 since GDAL throws errors in later versions of setuptools
+# RUN pip install setuptools==58.0.0
+
+# RUN pip install pygdal==2.4.2.10
+# See https://stackoverflow.com/questions/51217928/install-gdal-in-python-3-6
+# RUN pip install -I GDAL==2.4.2
+
+# Copy requirements file
+COPY ./requirements.txt .
+
+# Run this to install geoserver-rest dependencies
+RUN pip install pygdal=="`gdal-config --version`.*"
+# RUN pip install pygdal==2.4.2.10
+
+RUN pip install -I GDAL=="`gdal-config --version`.*"
+
+# install app dependencies
+RUN pip install -r requirements.txt
+
+# Putting pysld in requirements causes issues in installation. So install it separately
+RUN pip install pysld==0.0.3
+
+COPY . $APP_HOME
+
+RUN ls $APP_HOME
+
+# RUN mkdir $APP_HOME # comment out this line since git clone will create the directory
+RUN mkdir $APP_HOME/static # Create staticfiles directory
+RUN mkdir $APP_HOME/media # Create mediafiles directory
+RUN mkdir $APP_HOME/datasets # Create datasets directory
+
+WORKDIR $APP_HOME
+
+# COPY --from=builder /usr/src/app/wheels /wheels
+# COPY --from=builder /usr/src/app/requirements.txt .
+# RUN pip install --no-cache /wheels/*
+
+# copy entrypoint-prod.sh
+COPY ./entrypoint.prod.sh $APP_HOME
+
+# copy project
+COPY . $APP_HOME
+
+# chown all the files to the app user
+RUN chown -R $APP_USER:$APP_USER $APP_HOME
+
+#COPY --chown=$APP_USER:$APP_USER /home/test_vol $APP_HOME/media2
+#RUN chown -R $APP_USER:$APP_USER $APP_HOME/media
+
+# Allow write permissions
+# RUN chmod 777 $APP_HOME/media
+
+# change to the app user
+USER $APP_USER
+
+CMD python manage.py rqworker && python manage.py rqscheduler
+
+# run entrypoint-prod.sh
+RUN chmod +x $APP_HOME/entrypoint.prod.sh
+ENTRYPOINT ["/home/app/web/entrypoint.prod.sh"]

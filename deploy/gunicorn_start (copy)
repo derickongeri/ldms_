@@ -1,0 +1,76 @@
+#!/bin/bash
+
+# Name of the application
+NAME="oss_ldms"
+
+# Parent directory containing the project
+PROJECT_PARENT_DIR=/home/nyaga/django-apps
+
+# Location of the virtual environment
+VIRTUAL_ENV_BIN=/home/nyaga/virtualenvs/geoDjangoEnv/bin
+
+# Django project directory
+DJANGODIR=$PROJECT_PARENT_DIR/oss_ldms/backend
+
+# Create Logs in the parent directory of the project directory
+LOGS_DIR=$(dirname $DJANGODIR)
+LOGS_DIR=$LOGS_DIR/logs
+
+test -d $LOGS_DIR || mkdir -p $LOGS_DIR
+
+# We will communicate using this unix socket
+SOCKFILE=$PROJECT_PARENT_DIR/oss_ldms/run/gunicorn.sock
+
+# the user to run as
+USER=nyaga
+
+# the group to run as
+GROUP=nyaga
+
+# how many worker processes should GUnicorn spawn
+NUM_WORKERS=3
+
+# which settings file should Django use
+DJANGO_SETTINGS_MODULE=oss_ldms.settings
+
+# WSGI module name
+DJANGO_WSGI_MODULE=oss_ldms.wsgi
+
+echo "Starting $NAME as `whoami`"
+
+echo $LOGS_DIR
+
+# Navigate to project directory
+cd $DJANGODIR
+
+# Activate the virtual environment
+source $VIRTUAL_ENV_BIN/activate
+
+# install setproctitle 
+# The — name (NAME) argument when running GUnicorn specifies how your application 
+# will identify itself in programs such as top or ps.
+# If you encounter errors in the installation of setproctitle, comment out the line 
+# since it is not a critical component
+
+# pip install setproctitle 
+
+export DJANGO_SETTINGS_MODULE=$DJANGO_SETTINGS_MODULE
+
+export PYTHONPATH=$DJANGODIR:$PYTHONPATH
+
+# Create the run directory if it does not exist
+RUNDIR=$(dirname $SOCKFILE)
+
+test -d $RUNDIR || mkdir -p $RUNDIR
+
+# Start your Django Unicorn
+
+# Programs meant to be run under supervisor should not daemonize themselves (do not use --daemon)
+
+exec $VIRTUAL_ENV_BIN/gunicorn ${DJANGO_WSGI_MODULE}:application \
+--name $NAME \
+--workers $NUM_WORKERS \
+--user=$USER --group=$GROUP \
+--bind=unix:$SOCKFILE \
+--log-level=debug \
+--log-file=-

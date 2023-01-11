@@ -1,0 +1,10 @@
+{% autoescape off %}
+Dear {{ user.first_name }} {{ user.last_name }},
+
+Your task has been completed. Please click on the link below to view your results.
+{#  http://{{ domain }}{% url 'task_result' task_id=task.id %} #}
+{{ endpoint }}
+
+Do not reply to this email.
+
+{% endautoescape %}

@@ -1,0 +1,92 @@
+# use multi-build to reduce the overall size
+#########
+# BUILDER #
+#########
+
+# pull official base image
+FROM python:3.8.3-alpine AS builder
+
+# set work directory
+WORKDIR /usr/src/app
+
+# set environment variables 
+ENV PYTHONDONTWRITEBYTECODE 1 # Prevents Python from writing pyc files to disc. (equivalent to python -B option)
+ENV PYTHONUNBUFFERED 1 # Prevents Python from buffering stdout and stderr. (equivalent to python -u option)
+
+# install psycopg2 dependencies
+RUN apk update \
+    && apk add postgresql-dev gcc python3-dev musl-dev \
+    && apk add make automake gcc g++ \
+    && apk add --no-cache  \
+     --repository http://dl-cdn.alpinelinux.org/alpine/edge/testing \
+     --repository http://dl-cdn.alpinelinux.org/alpine/edge/main \
+     gdal \
+     gdal-dev \
+     geos \
+     geos-dev \
+     py-virtualenv \
+     libffi-dev \
+     proj proj-dev proj-util \
+     gfortran openblas-dev cython
+
+RUN pip install scikit-learn==0.23.2
+RUN pip install Fiona
+RUN pip install pyproj==2.6.1.post1
+# lint
+# RUN pip install --upgrade pip
+# RUN pip install flake8
+# COPY . .
+# RUN flake8 --ignore=E501,F401 .    
+
+# install dependencies
+COPY ./requirements.txt .
+RUN pip wheel --no-cache-dir --no-deps --wheel-dir /usr/src/app/wheels -r requirements.txt
+
+#########
+# FINAL #
+#########
+
+FROM python:3.8.3-alpine
+
+# set user
+ENV APP_USER=app
+ENV PROJ_DIR=/usr
+
+# create directory for the ldms user
+RUN mkdir -p /home/$APP_USER
+
+# create the ldms user
+RUN addgroup -S $APP_USER && adduser -S $APP_USER -G $APP_USER
+
+
+# create the appropriate directories
+ENV HOME=/home/$APP_USER
+ENV APP_HOME=/home/$APP_USER/web
+RUN mkdir $APP_HOME
+RUN mkdir $APP_HOME/static # Create staticfiles directory
+RUN mkdir $APP_HOME/media # Create mediafiles directory
+WORKDIR $APP_HOME
+
+# install dependencies
+RUN apk update && apk add libpq
+COPY --from=builder /usr/src/app/wheels /wheels
+COPY --from=builder /usr/src/app/requirements.txt .
+RUN pip install --no-cache /wheels/*
+
+RUN pip install Fiona
+
+# copy entrypoint-prod.sh
+COPY ./entrypoint.prod.sh $APP_HOME
+
+# copy project
+COPY . $APP_HOME
+
+# chown all the files to the app user
+RUN chown -R $APP_USER:$APP_USER $APP_HOME
+
+# change to the app user
+USER $APP_USER
+
+# run entrypoint-prod.sh
+# RUN chmod +x $APP_HOME/entrypoint.prod.sh
+ENTRYPOINT ["/home/app/web/entrypoint.prod.sh"]

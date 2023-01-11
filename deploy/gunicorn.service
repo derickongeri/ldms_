@@ -1,0 +1,10 @@
+[Unit]
+Description=oss_ldms_gunicorn service
+After=network.target
+
+[Service]
+ExecStart=/home/nyaga/app/oss_ldms/backend/deploy/gunicorn_start
+
+[Install]
+WantedBy=multi-user.target
+
